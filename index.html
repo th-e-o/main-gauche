@@ -174,6 +174,14 @@ details b{color:var(--fg)}
 .result{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
 .result .big{font-family:var(--f-chord);font-size:34px;line-height:1}
 .result .stars{text-align:left;font-size:22px}
+.course>*{flex-shrink:0}
+.cseg{align-self:flex-start}
+.cseg button{font-size:13.5px}
+.chart{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.cbar{position:relative;padding:14px 6px 8px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-family:var(--f-chord);font-size:15px;line-height:1.2;min-height:46px;overflow-wrap:anywhere}
+.cbar:nth-child(4n){border-right:0}
+.cbar small{position:absolute;top:2px;left:5px;font-family:var(--f-mono);font-size:9px;color:var(--muted)}
+.cbar .rep{color:var(--muted)}
 .lvltag{color:var(--brass);font-weight:600}
 @media (max-width:460px){.brand{display:none}.top{justify-content:space-between}.seg button{padding:6px 10px;font-size:13.5px}}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
@@ -440,13 +448,30 @@ const STAGES=[
   ['x5','All the Things You Are (A/B)','rootless','t-atty','fixed'],['x6','There Will Never Be Another You (basse + A/B)','bassRootless','t-another','fixed']]}
 ];
 const LEVELS=[];STAGES.forEach(st=>st.L.forEach(a=>LEVELS.push({id:a[0],t:a[1],type:a[2],prog:a[3],km:a[4],key:a[5]||'C'})));
+function tuneBars(P){return Math.ceil(P.ch.reduce((a,c)=>a+c[3],0)/4);}
+function tuneLevels(pid){
+  const P=PROGS[pid];if(!P)return[];const n=tuneBars(P),secs=[];for(let a=0;a<n;a+=8)secs.push([a,Math.min(a+8,n)]);
+  const L=[],add=(stage,t,type,range,km)=>L.push({id:'m|'+pid+'|'+type+'|'+(range?range.join('-'):'all')+'|'+(km||'fixed'),stage,t,type,prog:pid,km:km||'fixed',range,tune:true});
+  const secName=r=>'mesures '+(r[0]+1)+'–'+r[1];
+  add('1 · Repérer la grille','Basses : morceau entier','bass',null);
+  secs.length>1&&secs.forEach(r=>add('2 · Notes guides 3-7','Notes guides : '+secName(r),'guide',r));
+  add('2 · Notes guides 3-7','Notes guides : morceau entier','guide',null);
+  add('3 · Shells','Shells basse + 3-7 : morceau entier','shell',null);
+  secs.length>1&&secs.forEach(r=>add('4 · Voicings A/B','A/B : '+secName(r),'rootless',r));
+  add('4 · Voicings A/B','A/B : morceau entier','rootless',null);
+  add('5 · Deux mains','Basse + A/B : morceau entier','bassRootless',null);
+  add('6 · Dans tous les tons','A/B : morceau entier dans les 12 tons','rootless',null,'cycle');
+  return L;
+}
+function getLevel(id){if(!id)return null;if(id.startsWith('m|'))return tuneLevels(id.split('|')[1]).find(l=>l.id===id)||null;return LEVELS.find(l=>l.id===id)||null;}
+function levelList(id){return id&&id.startsWith('m|')?tuneLevels(id.split('|')[1]):LEVELS;}
 let LV={};try{LV=JSON.parse(localStorage.getItem('main-gauche-jazz-v1-levels')||'{}');}catch(e){}
 function saveLV(){try{localStorage.setItem('main-gauche-jazz-v1-levels',JSON.stringify(LV));}catch(e){}}
 const starsOf=p=>p>=1?3:p>=.85?2:p>=.7?1:0;
 function starHtml(n){return '★'.repeat(n)+'<span class="off">'+'★'.repeat(3-n)+'</span>';}
 
 /* ---------- état ---------- */
-const DEF={type:'rootless',prog:'251',key:0,keymode:'cycle',start:'free',names:'fr',bass:true,ghost:true,auto:true,bpm:96,mode:'course',level:null};
+const DEF={type:'rootless',prog:'251',key:0,keymode:'cycle',start:'free',names:'fr',bass:true,ghost:true,auto:true,bpm:96,mode:'course',level:null,range:null,study:'t-another',cview:'path'};
 const STORE='main-gauche-jazz-v1';
 let S=Object.assign({},DEF);
 try{Object.assign(S,JSON.parse(localStorage.getItem(STORE)||'{}'));}catch(e){}
@@ -463,9 +488,11 @@ function buildSeq(){
   if(P.allKeys||S.keymode==='fixed')keys=[k0];
   else if(S.keymode==='cycle')keys=Array.from({length:12},(_,i)=>KEYS.find(k=>k.pc===(k0.pc+5*i)%12));
   else{keys=[];let last=-1;for(let i=0;i<6;i++){let k;do{k=KEYS[Math.floor(Math.random()*12)];}while(k.pc===last);keys.push(k);last=k.pc;}}
+  let CH=P.ch;
+  if(S.range){let b=0;CH=P.ch.filter(c=>{const st=b;b+=c[3];return st>=S.range[0]*4&&st<S.range[1]*4;});if(!CH.length)CH=P.ch;}
   seq=[];
-  keys.forEach((k,ki)=>P.ch.forEach(([st,ls,q,b],ci)=>{const pc=(k.pc+st)%12;let sp=spell((k.l+ls)%7,pc);if(badRoot(sp))sp=simple(pc);seq.push({pc,sp,q,beats:b,key:k,ki,ci});}));
-  if(S.level&&seq.length<8){const one=seq.slice();for(let r=1;r<4;r++)one.forEach(c=>seq.push(Object.assign({},c,{ki:c.ki+r*100})));}
+  keys.forEach((k,ki)=>CH.forEach(([st,ls,q,b],ci)=>{const pc=(k.pc+st)%12;let sp=spell((k.l+ls)%7,pc);if(badRoot(sp))sp=simple(pc);seq.push({pc,sp,q,beats:b,key:k,ki,ci});}));
+  if(S.level&&seq.length<8&&CH.length<8){const one=seq.slice();for(let r=1;r<4;r++)one.forEach(c=>seq.push(Object.assign({},c,{ki:c.ki+r*100})));}
   path=[];let prev=null;
   seq.forEach((ch,i)=>{const c=prev?bestOf(prev,candidates(ch)):pickStart(startCands(ch));path[i]=c;prev=c;});
 }
@@ -563,7 +590,7 @@ const RULES='<details><summary>La règle du jeu</summary>'+
 function renderStrip(){
   const st=$('strip');let h='',lastK=-1;
   seq.forEach((ch,i)=>{
-    if(ch.ki!==lastK&&!PROGS[S.prog].allKeys&&seq.length>PROGS[S.prog].ch.length){h+='<span class="sep">'+nm(spell(ch.key.l,ch.key.pc))+'</span>';lastK=ch.ki;}
+    if(ch.ki!==lastK&&!PROGS[S.prog].allKeys&&seq.length>PROGS[S.prog].ch.length&&S.keymode!=='fixed'){h+='<span class="sep">'+nm(spell(ch.key.l,ch.key.pc))+'</span>';lastK=ch.ki;}
     const r=ex.res[i];const cls='chip'+(i===idx?' cur':'')+(S.mode==='ex'&&r?' '+r:'');
     h+='<button class="'+cls+'" data-i="'+i+'"'+(S.mode==='ex'?' disabled':'')+'>'+sym(ch)+'</button>';
   });
@@ -575,7 +602,7 @@ $('strip').addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b|
 function renderHead(){
   const ch=seq[idx];$('sym').textContent=sym(ch);
   let meta='<span>'+keyLabel(ch)+'</span><span><b>'+(idx+1)+'</b> / '+seq.length+'</span>';
-  const lv=S.level&&LEVELS.find(l=>l.id===S.level);if(S.mode==='ex'&&lv)meta='<span class="lvltag">Niveau '+(LEVELS.indexOf(lv)+1)+' · '+lv.t+'</span>'+meta;
+  const lv=getLevel(S.level);if(S.mode==='ex'&&lv)meta='<span class="lvltag">'+(lv.tune?PROGS[lv.prog].name:'Niveau '+(LEVELS.indexOf(lv)+1))+' · '+lv.t+'</span>'+meta;
   if(S.mode==='ex'){const s=ex.stats;meta+='<span>Réussis du 1er coup <b>'+s.ok+'</b>/'+s.total+' · série <b>'+s.streak+'</b> · record '+best+'</span>';}
   $('meta').innerHTML=meta;
   const nx=seq[(idx+1)%seq.length];$('next').innerHTML='ensuite <b>'+sym(nx)+'</b>';
@@ -594,7 +621,7 @@ function showDemo(sound){
 function showEx(){
   renderHead();renderStrip();
   if(ex.phase==='done'){
-    const r=ex.doneRes,lv=LEVELS.find(l=>l.id===S.level);
+    const r=ex.doneRes,lv=getLevel(S.level);
     $('formpill').hidden=true;paint({});
     $('info').innerHTML='<div class="result"><span class="big">'+Math.round(r.pct*100)+' %</span><span class="stars">'+starHtml(r.stars)+'</span><div class="msg">'+(lv?'<b>'+lv.t+'</b> : ':'')+r.ok+' accords justes du premier coup sur '+r.total+'.</div><div class="msg">'+(r.stars>=3?'Parfait. Passe au niveau suivant.':r.stars>=1?'Niveau validé. Refais-le pour viser les trois étoiles, ou passe au suivant.':'Il faut 70 % pour valider le niveau. Refais-le en prenant ton temps : la vitesse viendra ensuite.')+'</div></div>';
     renderControls();return;
@@ -745,7 +772,7 @@ function syncForm(){$('set-type').value=S.type;fillStart();progSel.value=S.prog;
 $('btn-set').addEventListener('click',()=>{stopAuto();syncForm();$('sheet').hidden=false;});
 $('sheet').addEventListener('click',e=>{if(e.target.id==='sheet')closeSheet();});
 $('setform').addEventListener('submit',e=>{e.preventDefault();closeSheet();});
-function closeSheet(){$('sheet').hidden=true;render();}
+function closeSheet(){$('sheet').hidden=true;closeEditor();render();}
 $('setform').addEventListener('change',e=>{
   const id=e.target.id;if(!id||id.startsWith('ed-'))return;
   const structural=['set-type','set-prog','set-key','set-keymode','set-start'].includes(id);
@@ -756,7 +783,7 @@ $('setform').addEventListener('change',e=>{
   $('set-keymode').disabled=!!PROGS[S.prog].allKeys;
   save();
   if(id==='set-type')fillStart();
-  if(structural){S.level=null;save();rebuild(id==='set-type');}
+  if(structural){S.level=null;S.range=null;save();rebuild(id==='set-type');}
 });
 function rebuild(kb){candCache.clear();buildSeq();idx=0;resetEx();if(kb)buildKb();}
 
@@ -802,7 +829,7 @@ $('ed-save').addEventListener('click',()=>{
   if(!g.chords.length){$('ed-err').textContent='Écris au moins un accord, par exemple « Dm7 G7 | Cmaj7 ».';return;}
   const t={id:editing&&editing.id?editing.id:'c-'+Date.now().toString(36),name,key,text};
   const i=CUSTOM.findIndex(x=>x.id===t.id);if(i>=0)CUSTOM[i]=t;else CUSTOM.push(t);
-  saveCustom();registerTunes();S.prog=t.id;S.key=KEYS.findIndex(k=>k.pc===PROGS[t.id].keyPc);S.keymode='fixed';save();
+  saveCustom();registerTunes();S.prog=t.id;S.study=t.id;S.key=KEYS.findIndex(k=>k.pc===PROGS[t.id].keyPc);S.keymode='fixed';save();
   fillProgs();syncForm();closeEditor();rebuild(false);
 });
 
@@ -895,10 +922,10 @@ function render(){
   $('mic-btn').hidden=S.mode!=='ex';
   if(c)renderCourse();else if(S.mode==='demo')showDemo(false);else showEx();
 }
-function nextLevel(){const i=LEVELS.findIndex(l=>l.id===S.level);return i>=0?LEVELS[i+1]:null;}
+function nextLevel(){const L=levelList(S.level),i=L.findIndex(l=>l.id===S.level);return i>=0?L[i+1]||null:null;}
 function startLevel(id){
-  const lv=LEVELS.find(l=>l.id===id);if(!lv)return;
-  S.type=lv.type;S.prog=lv.prog;S.keymode=lv.km;S.start='free';S.level=id;
+  const lv=getLevel(id);if(!lv)return;
+  S.type=lv.type;S.prog=lv.prog;S.keymode=lv.km;S.start='free';S.level=id;S.range=lv.range||null;
   const P=PROGS[lv.prog];S.key=P.tune?KEYS.findIndex(k=>k.pc===P.keyPc):KEYS.findIndex(k=>k.id===lv.key);
   save();candCache.clear();buildSeq();buildKb();setMode('ex');
 }
@@ -907,21 +934,47 @@ function finishLevel(){
   const old=LV[S.level]||{best:0};LV[S.level]={best:Math.max(old.best,pct),done:(old.done||stars>=1)};saveLV();
   ex.doneRes={pct,stars,ok:st.ok,total:st.total};ex.phase='done';idx=seq.length-1;showEx();
 }
-function renderCourse(){
-  const nDone=LEVELS.filter(l=>LV[l.id]&&LV[l.id].done).length;
-  const rec=LEVELS.find(l=>!(LV[l.id]&&LV[l.id].done));
-  let n=0,h='<div><h1>Parcours</h1><p class="intro">Des basses aux voicings à deux mains, les exercices classiques du piano jazz dans l\'ordre. Un niveau est validé à 70 % d\'accords justes du premier coup ; trois étoiles à 100 %.</p></div>'+
-    '<div class="overall"><span>'+nDone+' / '+LEVELS.length+' niveaux validés</span><span class="bar"><i style="width:'+(nDone/LEVELS.length*100)+'%"></i></span></div>';
-  STAGES.forEach(st=>{
-    h+='<section class="stg"><h2>'+st.t+'</h2><p>'+st.d+'</p><div class="lvls">';
-    st.L.forEach(a=>{const lv=LEVELS[n++],r=LV[lv.id],P=PROGS[lv.prog];
-      const sub=TYPES[lv.type].label+' · '+(P?P.name:'')+(lv.km==='cycle'?' · 12 tons':'');
-      h+='<button class="lvl'+(r&&r.done?' done':'')+(rec===lv?' next':'')+'" data-lv="'+lv.id+'"><span class="num">'+(r&&r.done?'✓':n)+'</span><span><b>'+lv.t+'</b><small>'+(rec===lv?'À faire maintenant · ':'')+sub+'</small></span><span class="stars">'+(r?starHtml(starsOf(r.best))+'<em>'+Math.round(r.best*100)+' %</em>':'')+'</span></button>';});
-    h+='</div></section>';
-  });
-  $('course').innerHTML=h;
-  const nx=$('course').querySelector('.lvl.next');if(nx&&!renderCourse.scrolled){renderCourse.scrolled=1;}
+function lvRow(lv,num,rec){const r=LV[lv.id],P=PROGS[lv.prog];
+  const sub=lv.tune?TYPES[lv.type].label:TYPES[lv.type].label+' · '+(P?P.name:'')+(lv.km==='cycle'?' · 12 tons':'');
+  return '<button class="lvl'+(r&&r.done?' done':'')+(rec===lv?' next':'')+'" data-lv="'+lv.id+'"><span class="num">'+(r&&r.done?'✓':num)+'</span><span><b>'+lv.t+'</b><small>'+(rec===lv?'À faire maintenant · ':'')+sub+'</small></span><span class="stars">'+(r?starHtml(starsOf(r.best))+'<em>'+Math.round(r.best*100)+' %</em>':'')+'</span></button>';}
+function progress(L){const d=L.filter(l=>LV[l.id]&&LV[l.id].done).length;return '<div class="overall"><span>'+d+' / '+L.length+' étapes validées</span><span class="bar"><i style="width:'+(d/L.length*100)+'%"></i></span></div>';}
+function fmtTok(t){return t==='%'?'<span class="rep">%</span>':t.replace(/([A-G])b/g,'$1♭').replace(/([A-G])#/g,'$1♯').replace(/b(5|9|13)/g,'♭$1').replace(/#(5|9|11)/g,'♯$1');}
+function chartHtml(P){
+  const bars=String(P.src.text).split(/[|\n]/).map(x=>x.trim()).filter(Boolean);
+  return '<div class="chart">'+bars.map((b,i)=>'<div class="cbar"><small>'+(i+1)+'</small>'+b.split(/\s+/).map(fmtTok).join(' ')+'</div>').join('')+'</div>';
 }
+function renderCourse(){
+  const tv=S.cview==='tune';
+  let h='<div class="cseg seg"><button data-cv="path" class="'+(tv?'':'on')+'">Parcours général</button><button data-cv="tune" class="'+(tv?'on':'')+'">Mon morceau</button></div>';
+  if(!tv){
+    const rec=LEVELS.find(l=>!(LV[l.id]&&LV[l.id].done));let n=0;
+    h+='<div><h1>Parcours</h1><p class="intro">Des basses aux voicings à deux mains, les exercices classiques du piano jazz dans l\'ordre. Un niveau est validé à 70 % d\'accords justes du premier coup ; trois étoiles à 100 %.</p></div>'+progress(LEVELS);
+    STAGES.forEach(st=>{h+='<section class="stg"><h2>'+st.t+'</h2><p>'+st.d+'</p><div class="lvls">';st.L.forEach(()=>{const lv=LEVELS[n++];h+=lvRow(lv,n,rec);});h+='</div></section>';});
+  }else{
+    const tunes=Object.keys(PROGS).filter(k=>PROGS[k].tune);if(!PROGS[S.study]||!PROGS[S.study].tune)S.study='t-another';
+    const P=PROGS[S.study],L=tuneLevels(S.study),rec=L.find(l=>!(LV[l.id]&&LV[l.id].done));
+    const k=KEYS.find(x=>x.pc===P.keyPc);
+    h+='<div><h1>Mon morceau</h1><p class="intro">Un plan de travail pour un morceau : on repère la grille par les basses, puis notes guides, shells et voicings A/B, section par section avant le morceau entier.</p></div>'+
+      '<div class="field"><label for="study-sel">Morceau</label><select id="study-sel">'+tunes.map(t=>'<option value="'+t+'"'+(t===S.study?' selected':'')+'>'+PROGS[t].name+(PROGS[t].custom?' (ma grille)':'')+'</option>').join('')+'</select></div>'+
+      '<div class="meta"><span>Tonalité : <b>'+nm(spell(k.l,k.pc))+(P.minor?' mineur':' majeur')+'</b></span><span><b>'+tuneBars(P)+'</b> mesures</span></div>'+
+      chartHtml(P)+
+      '<div class="tune-actions"><button class="btn sm" data-ta="listen">Voir et écouter les voicings</button><button class="btn sm" data-ta="edit">'+(P.custom?'Modifier la grille':'Corriger la grille (copie)')+'</button></div>'+
+      '<p class="note">Joue avec l\'enregistrement que tu travailles. Si ta version n\'a pas la même tonalité ou les mêmes accords (les fins de grille varient beaucoup selon les versions), corrige la grille : l\'appli fera une copie dans « Mes grilles ».</p>'+progress(L);
+    let n=0,lastSt='';
+    L.forEach(lv=>{if(lv.stage!==lastSt){if(lastSt)h+='</div></section>';h+='<section class="stg"><h2>'+lv.stage+'</h2><div class="lvls">';lastSt=lv.stage;}h+=lvRow(lv,++n,rec);});
+    h+='</div></section>';
+  }
+  $('course').innerHTML=h;
+}
+$('course').addEventListener('change',e=>{if(e.target.id==='study-sel'){S.study=e.target.value;save();renderCourse();}});
+$('course').addEventListener('click',e=>{
+  const cv=e.target.closest('[data-cv]');if(cv){S.cview=cv.dataset.cv;save();renderCourse();$('course').scrollTop=0;return;}
+  const ta=e.target.closest('[data-ta]');
+  if(ta){const P=PROGS[S.study];
+    if(ta.dataset.ta==='listen'){S.type='rootless';S.prog=S.study;S.keymode='fixed';S.key=KEYS.findIndex(k=>k.pc===P.keyPc);S.level=null;S.range=null;save();candCache.clear();buildSeq();buildKb();idx=0;setMode('demo');}
+    else{S.prog=S.study;syncForm();$('sheet').hidden=false;$('tune-edit').click();}
+    return;}
+});
 $('course').addEventListener('click',e=>{const b=e.target.closest('.lvl');if(b){audio();startLevel(b.dataset.lv);}});
 window.addEventListener('resize',()=>render());
 
