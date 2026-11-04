@@ -745,14 +745,24 @@ function detectNotes(mag,sr,N,lo,hi){
   return notes.sort((a,b)=>a-b);
 }
 const mic={on:false,stream:null,an:null,timer:null,hist:[],armed:true,rmsHist:[],err:'',key:''};
-const MIC_BLOCKED='Le micro n\'est pas accessible. Dans une page claude.ai, le micro est toujours bloqué : pour cette fonction, ouvre l\'appli depuis le fichier HTML hébergé sur un site en https. Sinon, vérifie que tu as autorisé le micro pour ce site.';
+function micError(e){
+  let framed=false;try{framed=window.top!==window.self;}catch(x){framed=true;}
+  const host=location.hostname,n=e&&e.name||'';
+  if(framed||/claude\.ai|claudeusercontent/.test(host))return 'Le micro est bloqué dans les pages claude.ai. Ouvre plutôt https://th-e-o.github.io/main-gauche/ dans Chrome ou Safari.';
+  if(!window.isSecureContext)return 'Le micro demande une adresse en https. Ouvre https://th-e-o.github.io/main-gauche/.';
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return 'Ce navigateur ne donne pas accès au micro. Si tu as ouvert le lien depuis une autre app (Claude, messagerie…), ouvre-le dans Chrome ou Safari : menu ⋮ ou ⋯ puis « Ouvrir dans le navigateur ».';
+  if(n==='NotAllowedError'||n==='SecurityError')return 'Accès au micro refusé. Si le lien s\'est ouvert dans une autre app (Claude, messagerie…), ouvre-le dans Chrome ou Safari. Sinon, autorise le micro pour ce site : Chrome → icône à gauche de l\'adresse → Autorisations → Micro ; iPhone → Réglages → Safari → Micro (et Réglages → Confidentialité → Micro pour Safari). Puis recharge la page.';
+  if(n==='NotFoundError'||n==='OverconstrainedError')return 'Aucun micro trouvé sur cet appareil.';
+  if(n==='NotReadableError')return 'Le micro est déjà utilisé par une autre app (appel, enregistreur…). Ferme-la et réessaie.';
+  return 'Le micro n\'a pas pu démarrer ('+(n||'erreur inconnue')+').';
+}
 async function micToggle(){
   if(mic.on){micStop();return;}
   mic.err='';
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){mic.err=MIC_BLOCKED;showEx();return;}
+  if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){mic.err=micError(null);showEx();return;}
   if(!audio()){mic.err='Le son n\'est pas disponible dans ce navigateur.';showEx();return;}
   try{mic.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});}
-  catch(e){mic.err=MIC_BLOCKED;showEx();return;}
+  catch(e){mic.err=micError(e);showEx();return;}
   const src=ac.createMediaStreamSource(mic.stream);mic.an=ac.createAnalyser();mic.an.fftSize=16384;mic.an.smoothingTimeConstant=0;src.connect(mic.an);
   mic.fb=new Float32Array(mic.an.frequencyBinCount);mic.mag=new Float32Array(mic.an.frequencyBinCount);mic.tb=new Float32Array(2048);
   mic.on=true;mic.armed=true;mic.hist=[];mic.rmsHist=[];mic.timer=setInterval(micFrame,90);
