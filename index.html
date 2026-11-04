@@ -182,6 +182,13 @@ details b{color:var(--fg)}
 .cbar:nth-child(4n){border-right:0}
 .cbar small{position:absolute;top:2px;left:5px;font-family:var(--f-mono);font-size:9px;color:var(--muted)}
 .cbar .rep{color:var(--muted)}
+.controls{flex-wrap:wrap}
+.tempo{flex-basis:100%;display:flex;align-items:center;gap:8px}
+.tempo .tl{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.tempo input{flex:1;min-width:0;accent-color:var(--brass)}
+.tempo .btn.sm{width:40px;padding:0;font-size:18px}
+.tempo output{min-width:72px;text-align:right;font-variant-numeric:tabular-nums;font-size:14px}
+.tempo output b{font-size:22px}
 .beats{display:flex;gap:8px;margin-top:8px}
 .beats i{width:12px;height:12px;border-radius:50%;background:var(--line)}
 .beats i.on{background:var(--brass)}
@@ -673,7 +680,7 @@ function maxMove(p,c){let m=0;const i0=skipN();for(let i=i0;i<c.notes.length;i++
 function btn(label,act,cls,dis){return '<button class="btn '+(cls||'')+'" data-a="'+act+'"'+(dis?' disabled':'')+'>'+label+'</button>';}
 function renderControls(){
   let h='';
-  if(S.mode==='jam')h=btn('−','jslow','',jam.on)+btn(jam.on?'Arrêter':'▶ Démarrer','jam','primary')+btn('+','jfast','',jam.on)+btn('Solution','jshow',S.jamShow?'on':'');
+  if(S.mode==='jam')h='<div class="tempo"><span class="tl">Tempo</span><button class="btn sm" data-a="jslow" aria-label="Ralentir">−</button><input type="range" id="jam-bpm" min="40" max="240" step="1" value="'+S.bpm+'" aria-label="Tempo"><button class="btn sm" data-a="jfast" aria-label="Accélérer">+</button><output id="jam-bpm-out"><b>'+S.bpm+'</b> bpm</output></div>'+btn(jam.on?'Arrêter':'▶ Démarrer','jam','primary')+btn('Solution','jshow',S.jamShow?'on':'');
   else if(S.mode==='demo')h=btn('◀','prev')+btn('Écouter','listen')+btn(playing?'Pause':'Lecture','auto',playing?'on':'')+btn('▶','next','primary');
   else if(ex.phase==='done')h=btn('Recommencer','lvRetry')+(nextLevel()?btn('Niveau suivant ▶','lvNext','primary'):btn('Parcours','lvList','primary'));
   else if(ex.phase==='input'||ex.phase==='wrong')h=btn('Effacer','clear','',!ex.input.size)+btn(!ex.prev||TYPES[S.type].free||ex.hint>=1||ex.tries>0?'Solution':'Indice','hint')+btn('Valider','check','primary');
@@ -695,7 +702,7 @@ function act(a){
   else if(a==='listenEx'){playNotes(ex.answer.notes,seq[idx].pc,1.6);}
   else if(a==='exnext')exNext();
   else if(a==='jam'){if(jam.on)jamStop();else jamStart();}
-  else if(a==='jslow'||a==='jfast'){S.bpm=Math.max(50,Math.min(220,S.bpm+(a==='jfast'?5:-5)));save();showJam();}
+  else if(a==='jslow'||a==='jfast'){setTempo(S.bpm+(a==='jfast'?5:-5));}
   else if(a==='jshow'){S.jamShow=!S.jamShow;save();showJam();}
   else if(a==='lvRetry')startLevel(S.level);
   else if(a==='lvNext')startLevel(nextLevel().id);
@@ -961,6 +968,12 @@ function jamStart(){
   jam.raf=requestAnimationFrame(jamTick);idx=0;showJam();
   try{navigator.wakeLock&&navigator.wakeLock.request('screen').then(l=>{jam.lock=l;}).catch(()=>{});}catch(e){}
 }
+function setTempo(v){
+  v=Math.max(40,Math.min(240,Math.round(v)));if(v===S.bpm)return;
+  if(jam.on){const now=ac.currentTime,pos=(now-jam.t0)/jam.d,nd=60/v;jam.t0=now-pos*nd;jam.d=nd;}
+  S.bpm=v;save();const r=$('jam-bpm');if(r)r.value=v;const o=$('jam-bpm-out');if(o)o.innerHTML='<b>'+v+'</b> bpm';renderHead();
+}
+$('controls').addEventListener('input',e=>{if(e.target.id==='jam-bpm')setTempo(+e.target.value);});
 function jamStop(){if(!jam.on)return;jam.on=false;clearInterval(jam.timer);cancelAnimationFrame(jam.raf);try{jam.lock&&jam.lock.release();}catch(e){}if(S.mode==='jam')showJam();}
 function closeChord(i){
   if(i<0||jam.res[i])return;
